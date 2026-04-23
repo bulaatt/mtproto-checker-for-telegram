@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "releasePackageName": "mtproto-checker-for-telegram",
   "description": "Update MTProto proxy lists from GitHub and check which Telegram proxies are actually usable",
+  "homepage": "https://github.com/bulaatt/mtproto-checker-for-telegram#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bulaatt/mtproto-checker-for-telegram.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bulaatt/mtproto-checker-for-telegram/issues"
+  },
   "main": "proxy_terminal_menu.js",
   "bin": {
     "tgproxy": "proxy_terminal_menu.js"
