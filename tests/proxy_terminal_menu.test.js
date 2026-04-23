@@ -294,10 +294,35 @@ test('runFindProxies validates input, launches checker, and renders latest resul
         );
 
         assert.ok(launchedArgv.includes('--file'));
-        assert.ok(launchedArgv.includes('proxies.txt'));
+        assert.ok(launchedArgv.includes(path.join(process.cwd(), 'proxies.txt')));
         assert.equal(resultTitle, 'Check Complete');
         assert.equal(pauseMessages[0], 'Press Enter to start checking...');
         assert.equal(pauseMessages.length, 2);
+    });
+});
+
+test('runFindProxies launches checker with resolved managed runtime file path', async () => {
+    await withTempProject(async () => {
+        writeProxyFile(path.join('data', 'runtime', 'github_source_all.txt'));
+        fs.writeFileSync(projectPaths.getWorkingResultsPath(), `# Working MTProto proxies (1)\n${PROXY_A}\n`, 'utf8');
+
+        let launchedArgv = null;
+
+        await runFindProxies(
+            { ...DEFAULT_CONFIG, inputFile: 'data/runtime/github_source_all.txt' },
+            {
+                pauseFn: () => {},
+                clearFn: () => {},
+                checkerRunner: async argv => {
+                    launchedArgv = argv;
+                },
+                renderResultsFn: () => {}
+            }
+        );
+
+        const fileIndex = launchedArgv.indexOf('--file');
+        assert.ok(fileIndex >= 0);
+        assert.equal(launchedArgv[fileIndex + 1], projectPaths.getAllSourcesPath());
     });
 });
 

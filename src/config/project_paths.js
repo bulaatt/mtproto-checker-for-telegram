@@ -103,6 +103,16 @@ function uniquePaths(candidates) {
     return [...new Set(candidates.filter(Boolean).map(candidate => path.normalize(candidate)))];
 }
 
+function normalizeRelativePathSeparators(filePath) {
+    return String(filePath || '').replace(/[\\/]+/g, path.sep);
+}
+
+function isManagedRelativePath(filePath) {
+    const normalized = String(filePath || '').replace(/\\/g, '/');
+    return normalized.startsWith(`${DATA_DIRNAME}/${RUNTIME_DIRNAME}/`)
+        || normalized.startsWith(`${DATA_DIRNAME}/${MANUAL_DIRNAME}/`);
+}
+
 function buildManagedPathCandidates(filePath) {
     const raw = String(filePath || '').trim();
     if (!raw) return [];
@@ -114,14 +124,25 @@ function buildManagedPathCandidates(filePath) {
         return [unquoted];
     }
 
-    const basename = path.basename(unquoted);
+    const normalizedRelative = normalizeRelativePathSeparators(unquoted);
+    const basename = path.basename(normalizedRelative);
+    const appRelativePath = path.join(getAppRoot(), normalizedRelative);
+    const projectRelativePath = path.resolve(getProjectRoot(), normalizedRelative);
+    const managedCandidates = [
+        appRelativePath,
+        projectRelativePath
+    ];
+    const projectCandidates = [
+        projectRelativePath,
+        appRelativePath
+    ];
+
     return uniquePaths([
-        path.resolve(getProjectRoot(), unquoted),
-        path.join(getAppRoot(), unquoted),
-        path.join(getRuntimeDataDir(), unquoted),
-        path.join(getManualDataDir(), unquoted),
-        basename === unquoted ? path.join(getRuntimeDataDir(), basename) : null,
-        basename === unquoted ? path.join(getManualDataDir(), basename) : null
+        ...(isManagedRelativePath(unquoted) ? managedCandidates : projectCandidates),
+        path.join(getRuntimeDataDir(), normalizedRelative),
+        path.join(getManualDataDir(), normalizedRelative),
+        basename === normalizedRelative ? path.join(getRuntimeDataDir(), basename) : null,
+        basename === normalizedRelative ? path.join(getManualDataDir(), basename) : null
     ]);
 }
 

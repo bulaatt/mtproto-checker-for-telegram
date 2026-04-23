@@ -3711,7 +3711,8 @@ async function main(argv = process.argv) {
     }
 
     const args = parseArgs(argv);
-    validateInputFileOrThrow(args.file);
+    const inputValidation = validateInputFileOrThrow(args.file);
+    args.file = inputValidation.resolvedPath;
     const overallStartedAt = Date.now();
     const friendlyMode = !args.verbose;
     const cancelState = createCancelState();

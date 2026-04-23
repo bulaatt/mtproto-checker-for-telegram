@@ -108,6 +108,7 @@ const {
     runScheduledColdRetests,
     summarizeDcSweepOutcome,
     summarizeColdRetests,
+    loadInputEntries,
     validateInputFileOrThrow
 } = require('../src/checker');
 
@@ -231,15 +232,26 @@ test('validateInputFileOrThrow returns validation details for a valid file', () 
 
     try {
         process.chdir(tempDir);
+        projectPaths.ensureDataDirectories();
         fs.writeFileSync(
             'proxies.txt',
             'tg://proxy?server=valid.example&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc\n',
+            'utf8'
+        );
+        fs.writeFileSync(
+            projectPaths.getAllSourcesPath(),
+            'tg://proxy?server=managed.example&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc\n',
             'utf8'
         );
 
         const validation = validateInputFileOrThrow('proxies.txt');
         assert.equal(validation.ok, true);
         assert.equal(validation.stats.uniqueSupported, 1);
+
+        const managedValidation = validateInputFileOrThrow('data/runtime/github_source_all.txt');
+        assert.equal(managedValidation.ok, true);
+        assert.equal(managedValidation.resolvedPath, projectPaths.getAllSourcesPath());
+        assert.equal(loadInputEntries(managedValidation.resolvedPath).length, 1);
     } finally {
         process.chdir(previousCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });

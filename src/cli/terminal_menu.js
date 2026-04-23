@@ -1055,7 +1055,10 @@ async function runFindProxies(config, options = {}) {
         pauseFn(t('run.pressEnterToStart'));
 
         clearFn();
-        await checkerRunner(buildArgv(config));
+        await checkerRunner(buildArgv({
+            ...config,
+            inputFile: validation.resolvedPath
+        }));
         renderResultsFn(readLastResultsFn(), { title: t('run.checkCompleteTitle') });
     } catch (error) {
         if (isUserCancelledError(error)) {

@@ -72,6 +72,9 @@ test('TGPROXY_HOME overrides the managed data root and keeps app-relative labels
         process.env.TGPROXY_HOME = appHome;
         process.chdir(workspace);
         projectPaths.ensureDataDirectories();
+        fs.mkdirSync(path.join(workspace, 'data', 'runtime'), { recursive: true });
+        fs.writeFileSync(path.join(workspace, 'data', 'runtime', projectPaths.ALL_SOURCES_FILENAME), '', 'utf8');
+        fs.writeFileSync(projectPaths.getAllSourcesPath(), '', 'utf8');
 
         const workingResultsPath = projectPaths.getWorkingResultsPath();
         assert.equal(
@@ -81,6 +84,10 @@ test('TGPROXY_HOME overrides the managed data root and keeps app-relative labels
         assert.equal(
             projectPaths.toProjectRelative(workingResultsPath),
             path.join('data', 'runtime', 'working_proxies.txt')
+        );
+        assert.equal(
+            projectPaths.resolveProjectFilePath(path.join('data', 'runtime', projectPaths.ALL_SOURCES_FILENAME)),
+            projectPaths.getAllSourcesPath()
         );
         assert.equal(fs.existsSync(path.join(appHome, 'data', 'runtime')), true);
         assert.equal(fs.existsSync(path.join(appHome, 'data', 'manual')), true);
