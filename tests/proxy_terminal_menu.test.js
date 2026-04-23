@@ -193,7 +193,7 @@ test('validateProxyListFile accepts readable MTProto files and rejects unusable 
 test('normalizeUserFilePath supports quoted relative paths and tilde expansion', () => withTempProject(() => {
     const quoted = normalizeUserFilePath('"data/runtime/proxies.txt"');
     assert.equal(quoted.ok, true);
-    assert.equal(quoted.storedPath, 'data/runtime/proxies.txt');
+    assert.equal(quoted.storedPath, path.join('data', 'runtime', 'proxies.txt'));
 
     const home = normalizeUserFilePath('~/custom_proxies.txt');
     assert.equal(home.ok, true);

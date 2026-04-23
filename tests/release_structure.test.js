@@ -189,9 +189,6 @@ test('release packaging files keep end-user docs and runtime data scaffolding on
     assert.ok(!packagedPaths.has('baseline_artifacts/'));
     assert.ok(!packagedPaths.has('.github/'));
     assert.ok(!packagedPaths.has('tests/'));
-
-    const projectRoot = path.resolve(__dirname, '..');
-    assert.equal(path.basename(projectRoot), 'MTProto Checker for Telegram');
 });
 
 test('lib directory has been removed from the repository layout', () => {
@@ -207,7 +204,11 @@ test('repository tree does not keep tracked .DS_Store files', () => {
     assert.equal(files.some(filePath => path.basename(filePath) === '.DS_Store'), false);
 });
 
-test('release builder creates clean macOS, Windows, and Linux user packages', () => {
+test('legacy archive builder creates clean optional user packages', {
+    skip: process.platform === 'win32'
+        ? 'Optional platform archives are not part of the npm release path on Windows CI.'
+        : false
+}, () => {
     const projectRoot = path.resolve(__dirname, '..');
     const { buildReleaseTree, RELEASE_TARGETS } = require('../scripts/build_release');
 
@@ -251,7 +252,7 @@ test('release builder creates clean macOS, Windows, and Linux user packages', ()
     }
 });
 
-test('release builder creates Linux tarball with portable archive settings', () => {
+test('legacy archive builder creates Linux tarball with portable archive settings', () => {
     const {
         RELEASE_TARGETS,
         buildArchiveCommand

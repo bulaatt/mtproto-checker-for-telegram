@@ -43,6 +43,7 @@ function forceRawAnsiStdout() {
     for (const key of ['isTTY', 'cursorTo', 'moveCursor', 'clearLine', 'clearScreenDown']) {
         descriptors.set(key, Object.getOwnPropertyDescriptor(process.stdout, key));
     }
+    const originalWtSession = process.env.WT_SESSION;
 
     Object.defineProperty(process.stdout, 'isTTY', {
         configurable: true,
@@ -55,6 +56,7 @@ function forceRawAnsiStdout() {
             value: undefined
         });
     }
+    process.env.WT_SESSION = process.env.WT_SESSION || 'test-terminal';
 
     return () => {
         for (const [key, descriptor] of descriptors) {
@@ -63,6 +65,11 @@ function forceRawAnsiStdout() {
             } else {
                 delete process.stdout[key];
             }
+        }
+        if (typeof originalWtSession === 'string') {
+            process.env.WT_SESSION = originalWtSession;
+        } else {
+            delete process.env.WT_SESSION;
         }
     };
 }

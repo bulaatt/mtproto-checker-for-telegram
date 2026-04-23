@@ -25,6 +25,10 @@ function toRealPath(targetPath) {
     }
 }
 
+function pathsReferToSameLocation(actualPath, expectedPath) {
+    assert.equal(toRealPath(actualPath), toRealPath(expectedPath));
+}
+
 test('managed files default to a dedicated user tgproxy directory while cwd stays the project root', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'project-paths-default-'));
     const previousCwd = process.cwd();
@@ -34,16 +38,17 @@ test('managed files default to a dedicated user tgproxy directory while cwd stay
         delete process.env.TGPROXY_HOME;
         process.chdir(tempDir);
 
-        assert.equal(projectPaths.getProjectRoot(), toRealPath(tempDir));
+        pathsReferToSameLocation(projectPaths.getProjectRoot(), tempDir);
         assert.equal(projectPaths.getAppRoot(), getExpectedDefaultAppRoot());
         assert.equal(
             projectPaths.getWorkingResultsPath(),
             path.join(getExpectedDefaultAppRoot(), 'data', 'runtime', 'working_proxies.txt')
         );
         assert.equal(
-            projectPaths.resolveProjectFilePath('proxies.txt'),
-            path.join(toRealPath(tempDir), 'proxies.txt')
+            path.dirname(projectPaths.resolveProjectFilePath('proxies.txt')),
+            projectPaths.getProjectRoot()
         );
+        assert.equal(path.basename(projectPaths.resolveProjectFilePath('proxies.txt')), 'proxies.txt');
     } finally {
         if (typeof previousAppHome === 'string') {
             process.env.TGPROXY_HOME = previousAppHome;

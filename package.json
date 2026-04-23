@@ -1,6 +1,6 @@
 {
   "name": "tgproxy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "releasePackageName": "mtproto-checker-for-telegram",
   "description": "Update MTProto proxy lists from GitHub and check which Telegram proxies are actually usable",
   "homepage": "https://github.com/bulaatt/mtproto-checker-for-telegram#readme",
@@ -20,7 +20,7 @@
     "build:release": "node scripts/build_release.js",
     "benchmark:report": "node scripts/benchmark_report.js",
     "smoke:release": "node scripts/release_smoke_check.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests"
   },
   "keywords": [
     "telegram",
