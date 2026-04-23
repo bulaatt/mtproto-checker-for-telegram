@@ -39,8 +39,9 @@ Choose the interface language, refresh or select a proxy list, and start the che
 
 The latest working proxies are saved to:
 
-- macOS/Linux: `~/.tgproxy/data/runtime/working_proxies.txt`
-- Windows: `%AppData%\tgproxy\data\runtime\working_proxies.txt`
+- All platforms: `~/tgproxy/data/runtime/working_proxies.txt`
+
+Put your own `.txt` proxy lists in `~/tgproxy/data/manual/` or choose any custom path from the menu.
 
 ## Proxy Sources
 

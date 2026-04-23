@@ -116,10 +116,9 @@ function buildUserReadme(target) {
         '## Your Files',
         '',
         '- Put your own `.txt` proxy list in this folder, or choose a custom path from the menu',
-        '- On macOS/Linux, results are saved to `~/.tgproxy/data/runtime/working_proxies.txt`',
-        '- On Windows, results are saved to `%AppData%\\tgproxy\\data\\runtime\\working_proxies.txt`',
-        '- On macOS/Linux, settings are saved to `~/.tgproxy/data/runtime/checker_config.json`',
-        '- On Windows, settings are saved to `%AppData%\\tgproxy\\data\\runtime\\checker_config.json`',
+        '- Results are saved to `~/tgproxy/data/runtime/working_proxies.txt`',
+        '- Settings are saved to `~/tgproxy/data/runtime/checker_config.json`',
+        '- Put manual proxy lists in `~/tgproxy/data/manual/`',
         '## Notes',
         '',
         '- Internet access is required for live checks',
@@ -146,12 +145,10 @@ function buildPlatformReadme(target) {
         '',
         '## Important Files',
         '',
-        '- `~/.tgproxy/data/runtime/working_proxies.txt` - latest saved working results on macOS/Linux',
-        '- `%AppData%\\tgproxy\\data\\runtime\\working_proxies.txt` - latest saved working results on Windows',
-        '- `~/.tgproxy/data/runtime/checker_config.json` - saved menu settings on macOS/Linux',
-        '- `%AppData%\\tgproxy\\data\\runtime\\checker_config.json` - saved menu settings on Windows',
-        '- `~/.tgproxy/data/runtime/github_source_all.txt` - latest refreshed built-in source list on macOS/Linux',
-        '- `%AppData%\\tgproxy\\data\\runtime\\github_source_all.txt` - latest refreshed built-in source list on Windows'
+        '- `~/tgproxy/data/runtime/working_proxies.txt` - latest saved working results',
+        '- `~/tgproxy/data/runtime/checker_config.json` - saved menu settings',
+        '- `~/tgproxy/data/runtime/github_source_all.txt` - latest refreshed built-in source list',
+        '- `~/tgproxy/data/manual/` - manual proxy lists'
     ].join('\n');
 }
 

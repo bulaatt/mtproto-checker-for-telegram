@@ -7,6 +7,10 @@ const path = require('path');
 const projectPaths = require('../src/config/project_paths');
 
 function getExpectedDefaultAppRoot() {
+    return path.join(os.homedir(), 'tgproxy');
+}
+
+function getExpectedLegacyAppRoot() {
     if (process.platform === 'win32') {
         const appData = String(process.env.APPDATA || '').trim();
         return appData
@@ -15,6 +19,26 @@ function getExpectedDefaultAppRoot() {
     }
 
     return path.join(os.homedir(), '.tgproxy');
+}
+
+function withTempHome(fn) {
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'project-paths-home-'));
+    const originalHomeDir = os.homedir;
+    const previousAppData = process.env.APPDATA;
+
+    try {
+        os.homedir = () => tempHome;
+        process.env.APPDATA = path.join(tempHome, 'AppData', 'Roaming');
+        return fn(tempHome);
+    } finally {
+        os.homedir = originalHomeDir;
+        if (typeof previousAppData === 'string') {
+            process.env.APPDATA = previousAppData;
+        } else {
+            delete process.env.APPDATA;
+        }
+        fs.rmSync(tempHome, { recursive: true, force: true });
+    }
 }
 
 function toRealPath(targetPath) {
@@ -100,4 +124,41 @@ test('TGPROXY_HOME overrides the managed data root and keeps app-relative labels
         process.chdir(previousCwd);
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
+});
+
+test('default app root migrates legacy managed data into the visible tgproxy directory', () => {
+    withTempHome(() => {
+        const previousAppHome = process.env.TGPROXY_HOME;
+
+        try {
+            delete process.env.TGPROXY_HOME;
+            const legacyRoot = getExpectedLegacyAppRoot();
+            const legacyRuntime = path.join(legacyRoot, 'data', 'runtime');
+            const legacyManual = path.join(legacyRoot, 'data', 'manual');
+            fs.mkdirSync(legacyRuntime, { recursive: true });
+            fs.mkdirSync(legacyManual, { recursive: true });
+            fs.writeFileSync(path.join(legacyRuntime, projectPaths.WORKING_RESULTS_FILENAME), 'old results\n', 'utf8');
+            fs.writeFileSync(path.join(legacyRuntime, projectPaths.CHECKER_CONFIG_FILENAME), '{}\n', 'utf8');
+            fs.writeFileSync(path.join(legacyManual, 'custom.txt'), 'manual list\n', 'utf8');
+
+            projectPaths.ensureDataDirectories();
+
+            assert.equal(projectPaths.getAppRoot(), getExpectedDefaultAppRoot());
+            assert.equal(
+                fs.readFileSync(projectPaths.getWorkingResultsPath(), 'utf8'),
+                'old results\n'
+            );
+            assert.equal(
+                fs.readFileSync(projectPaths.getManualFilePath('custom.txt'), 'utf8'),
+                'manual list\n'
+            );
+            assert.equal(fs.existsSync(legacyRoot), true);
+        } finally {
+            if (typeof previousAppHome === 'string') {
+                process.env.TGPROXY_HOME = previousAppHome;
+            } else {
+                delete process.env.TGPROXY_HOME;
+            }
+        }
+    });
 });

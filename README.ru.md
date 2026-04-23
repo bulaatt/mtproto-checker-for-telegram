@@ -39,8 +39,9 @@ tgproxy
 
 Последний список рабочих прокси сохраняется здесь:
 
-- macOS/Linux: `~/.tgproxy/data/runtime/working_proxies.txt`
-- Windows: `%AppData%\tgproxy\data\runtime\working_proxies.txt`
+- Все платформы: `~/tgproxy/data/runtime/working_proxies.txt`
+
+Свои `.txt`-списки можно класть в `~/tgproxy/data/manual/` или выбирать любой путь через меню.
 
 ## Источники списков прокси
 

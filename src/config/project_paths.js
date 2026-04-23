@@ -3,7 +3,8 @@ const os = require('os');
 const path = require('path');
 
 const APP_HOME_ENV = 'TGPROXY_HOME';
-const APP_DIRNAME = '.tgproxy';
+const APP_DIRNAME = 'tgproxy';
+const LEGACY_APP_DIRNAME = '.tgproxy';
 const DATA_DIRNAME = 'data';
 const RUNTIME_DIRNAME = 'runtime';
 const MANUAL_DIRNAME = 'manual';
@@ -19,21 +20,21 @@ function getProjectRoot() {
     return process.cwd();
 }
 
+function hasAppHomeOverride() {
+    return Boolean(String(process.env[APP_HOME_ENV] || '').trim());
+}
+
+function getDefaultAppRoot() {
+    return path.join(os.homedir(), APP_DIRNAME);
+}
+
 function getAppRoot() {
     const override = String(process.env[APP_HOME_ENV] || '').trim();
     if (override) {
         return path.resolve(override);
     }
 
-    if (process.platform === 'win32') {
-        const appData = String(process.env.APPDATA || '').trim();
-        if (appData) {
-            return path.join(appData, 'tgproxy');
-        }
-        return path.join(os.homedir(), 'AppData', 'Roaming', 'tgproxy');
-    }
-
-    return path.join(os.homedir(), APP_DIRNAME);
+    return getDefaultAppRoot();
 }
 
 function getDataDir() {
@@ -80,7 +81,65 @@ function getAllSourcesPath() {
     return getRuntimeFilePath(ALL_SOURCES_FILENAME);
 }
 
+function getLegacyAppRoots() {
+    if (hasAppHomeOverride()) {
+        return [];
+    }
+
+    if (process.platform === 'win32') {
+        const roots = [];
+        const appData = String(process.env.APPDATA || '').trim();
+        if (appData) {
+            roots.push(path.join(appData, APP_DIRNAME));
+        }
+        roots.push(path.join(os.homedir(), 'AppData', 'Roaming', APP_DIRNAME));
+        return uniquePaths(roots).filter(root => root !== getAppRoot());
+    }
+
+    return [path.join(os.homedir(), LEGACY_APP_DIRNAME)];
+}
+
+function isDirectoryEmpty(dirPath) {
+    try {
+        return fs.readdirSync(dirPath).length === 0;
+    } catch (error) {
+        if (error && error.code === 'ENOENT') return true;
+        throw error;
+    }
+}
+
+function copyMissingEntries(sourceDir, targetDir) {
+    if (!fs.existsSync(sourceDir)) return;
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+        const sourcePath = path.join(sourceDir, entry.name);
+        const targetPath = path.join(targetDir, entry.name);
+        if (fs.existsSync(targetPath)) continue;
+
+        if (entry.isDirectory()) {
+            copyMissingEntries(sourcePath, targetPath);
+            continue;
+        }
+
+        if (entry.isFile()) {
+            fs.copyFileSync(sourcePath, targetPath);
+        }
+    }
+}
+
+function migrateLegacyAppRoot() {
+    const appRoot = getAppRoot();
+    if (!isDirectoryEmpty(appRoot)) return;
+
+    const legacyRoot = getLegacyAppRoots().find(candidate => fs.existsSync(candidate));
+    if (!legacyRoot) return;
+
+    copyMissingEntries(legacyRoot, appRoot);
+}
+
 function ensureDataDirectories() {
+    migrateLegacyAppRoot();
     fs.mkdirSync(getRuntimeDataDir(), { recursive: true });
     fs.mkdirSync(getManualDataDir(), { recursive: true });
 }

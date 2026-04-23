@@ -145,8 +145,10 @@ test('repository ships bilingual GitHub-facing readmes and release notes for v1'
     assert.match(englishReadme, /docs\/assets\/readme\/checker-splash-en\.png/);
     assert.match(englishReadme, /npm install -g tgproxy/);
     assert.match(englishReadme, /tgproxy/);
-    assert.match(englishReadme, /~\/\.tgproxy\/data\/runtime\/working_proxies\.txt/);
-    assert.match(englishReadme, /%AppData%\\tgproxy\\data\\runtime\\working_proxies\.txt/);
+    assert.match(englishReadme, /~\/tgproxy\/data\/runtime\/working_proxies\.txt/);
+    assert.match(englishReadme, /~\/tgproxy\/data\/manual\//);
+    assert.doesNotMatch(englishReadme, /~\/\.tgproxy/);
+    assert.doesNotMatch(englishReadme, /%AppData%/);
     assert.doesNotMatch(englishReadme, /checker_candidates\.json/);
     assert.doesNotMatch(englishReadme, /git clone/);
     assert.doesNotMatch(englishReadme, /npm run check/);
@@ -156,8 +158,10 @@ test('repository ships bilingual GitHub-facing readmes and release notes for v1'
     assert.match(russianReadme, /docs\/assets\/readme\/checker-splash-ru\.png/);
     assert.match(russianReadme, /npm install -g tgproxy/);
     assert.match(russianReadme, /tgproxy/);
-    assert.match(russianReadme, /~\/\.tgproxy\/data\/runtime\/working_proxies\.txt/);
-    assert.match(russianReadme, /%AppData%\\tgproxy\\data\\runtime\\working_proxies\.txt/);
+    assert.match(russianReadme, /~\/tgproxy\/data\/runtime\/working_proxies\.txt/);
+    assert.match(russianReadme, /~\/tgproxy\/data\/manual\//);
+    assert.doesNotMatch(russianReadme, /~\/\.tgproxy/);
+    assert.doesNotMatch(russianReadme, /%AppData%/);
     assert.doesNotMatch(russianReadme, /checker_candidates\.json/);
     assert.doesNotMatch(russianReadme, /git clone/);
     assert.doesNotMatch(russianReadme, /npm run check/);
@@ -239,16 +243,20 @@ test('legacy archive builder creates clean optional user packages', {
         assert.match(releaseReadme, /npm install/);
         assert.doesNotMatch(releaseReadme, /npm install --omit=dev/);
         assert.match(releaseReadme, /npm start/);
-        assert.match(releaseReadme, /~\/\.tgproxy\/data\/runtime\/working_proxies\.txt/);
-        assert.match(releaseReadme, /%AppData%\\tgproxy\\data\\runtime\\working_proxies\.txt/);
+        assert.match(releaseReadme, /~\/tgproxy\/data\/runtime\/working_proxies\.txt/);
+        assert.match(releaseReadme, /~\/tgproxy\/data\/manual\//);
+        assert.doesNotMatch(releaseReadme, /~\/\.tgproxy/);
+        assert.doesNotMatch(releaseReadme, /%AppData%/);
         assert.doesNotMatch(releaseReadme, /## Development/);
 
         const platformReadme = fs.readFileSync(path.join(targetRoot, 'README_PLATFORM.md'), 'utf8');
         assert.match(platformReadme, /npm install/);
         assert.doesNotMatch(platformReadme, /npm install --omit=dev/);
         assert.match(platformReadme, /npm start/);
-        assert.match(platformReadme, /~\/\.tgproxy\/data\/runtime\/working_proxies\.txt/);
-        assert.match(platformReadme, /%AppData%\\tgproxy\\data\\runtime\\working_proxies\.txt/);
+        assert.match(platformReadme, /~\/tgproxy\/data\/runtime\/working_proxies\.txt/);
+        assert.match(platformReadme, /~\/tgproxy\/data\/manual\//);
+        assert.doesNotMatch(platformReadme, /~\/\.tgproxy/);
+        assert.doesNotMatch(platformReadme, /%AppData%/);
     }
 });
 
