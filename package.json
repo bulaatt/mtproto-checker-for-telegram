@@ -1,0 +1,47 @@
+{
+  "name": "tgproxy",
+  "version": "1.0.0",
+  "releasePackageName": "mtproto-checker-for-telegram",
+  "description": "Update MTProto proxy lists from GitHub and check which Telegram proxies are actually usable",
+  "main": "proxy_terminal_menu.js",
+  "bin": {
+    "tgproxy": "proxy_terminal_menu.js"
+  },
+  "scripts": {
+    "start": "node proxy_terminal_menu.js",
+    "build:release": "node scripts/build_release.js",
+    "benchmark:report": "node scripts/benchmark_report.js",
+    "smoke:release": "node scripts/release_smoke_check.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "telegram",
+    "mtproto",
+    "proxy",
+    "checker",
+    "tdlib"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16.20.2"
+  },
+  "files": [
+    "src/",
+    "telegram_proxy_pinger.js",
+    "proxy_terminal_menu.js",
+    "ui.js",
+    "README.md",
+    "LICENSE",
+    "package-lock.json",
+    "package.json",
+    "data/manual/.gitkeep",
+    "data/runtime/.gitkeep"
+  ],
+  "dependencies": {
+    "prebuilt-tdlib": "^0.1008063.0",
+    "readline-sync": "^1.4.10",
+    "tdl": "^8.1.0"
+  }
+}
