@@ -98,6 +98,7 @@ const STATUS = {
 const DEFAULT_DC_SWEEP = [2, 4, 5];
 const MAX_RECOMMENDED_CONCURRENCY = 128;
 const MAX_COLD_SCHEDULER_CONCURRENCY = 32;
+const WORKER_INIT_CONCURRENCY = 8;
 const DEFAULT_RECONNECT_DELAY_MS = 150;
 const REQUIRED_COLD_CONFIRMATIONS = 3;
 const REQUIRED_COLD_CONFIRMATIONS_HOSTNAME = 4;
@@ -3440,6 +3441,10 @@ function buildBootstrapCandidateOrder(candidates, bucketCount) {
 }
 
 async function runProxyCheckPool(items, workers, args, options = {}) {
+    if (!Array.isArray(workers) || workers.length === 0) {
+        throw new Error('runProxyCheckPool requires at least one worker');
+    }
+
     const results = new Array(items.length);
     const cancelState = options.cancelState || null;
     const showProgress = options.showProgress !== false;
@@ -3694,18 +3699,46 @@ async function initializeWorkers(count, initTimeout, options = {}) {
     const workers = [];
     const initErrors = [];
 
-    for (let index = 0; index < count; index += 1) {
+    for (let startIndex = 0; startIndex < count;) {
         if (cancelState && cancelState.cancelled) break;
-        const worker = new Worker(index + 1).setCancelState(cancelState);
-        try {
-            await worker.init(initTimeout);
-            workers.push(worker);
-        } catch (error) {
-            initErrors.push(explainEnvironmentError(error));
-            if (verbose) {
-                console.log(`Worker #${worker.id} init failed: ${explainEnvironmentError(error)}`);
+
+        const waveIndexes = Array.from({
+            length: Math.min(WORKER_INIT_CONCURRENCY, count - startIndex)
+        }, (_, offset) => startIndex + offset);
+        const isFirstWave = startIndex === 0;
+        startIndex += waveIndexes.length;
+
+        const waveResults = await Promise.all(waveIndexes.map(async index => {
+            if (cancelState && cancelState.cancelled) {
+                return { index, worker: null, error: null };
             }
-            await worker.close();
+
+            const worker = new Worker(index + 1).setCancelState(cancelState);
+            try {
+                await worker.init(initTimeout);
+                return { index, worker, error: null };
+            } catch (error) {
+                const explained = explainEnvironmentError(error);
+                if (verbose) {
+                    console.log(`Worker #${worker.id} init failed: ${explained}`);
+                }
+                await worker.close();
+                return { index, worker: null, error: explained };
+            }
+        }));
+
+        waveResults
+            .sort((left, right) => left.index - right.index)
+            .forEach(result => {
+                if (result.worker) {
+                    workers.push(result.worker);
+                } else if (result.error) {
+                    initErrors.push(result.error);
+                }
+            });
+
+        if (isFirstWave && !waveResults.some(result => result.worker)) {
+            break;
         }
     }
 

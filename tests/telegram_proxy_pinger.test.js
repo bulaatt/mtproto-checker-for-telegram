@@ -205,6 +205,31 @@ test('parseProxyUrl accepts mixed-case t.me links', () => {
     assert.equal(parsed.value.server, 'mixedcase.example');
 });
 
+test('parseProxyUrl rejects private and reserved IP literal servers', () => {
+    const unsafeServers = [
+        '127.0.0.1',
+        '10.0.0.1',
+        '172.16.0.1',
+        '192.168.0.1',
+        '169.254.1.1',
+        '::1',
+        'fc00::1'
+    ];
+
+    for (const server of unsafeServers) {
+        const parsed = parseProxyUrl(`tg://proxy?server=${encodeURIComponent(server)}&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc`);
+        assert.equal(parsed.ok, false, server);
+        assert.equal(parsed.reason, STATUS.INVALID_INPUT, server);
+    }
+});
+
+test('parseProxyUrl rejects terminal control characters in server names', () => {
+    const parsed = parseProxyUrl('tg://proxy?server=%1B%5D52%3Bc%3BaGVsbG8%3D%07.example&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc');
+
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.reason, STATUS.INVALID_INPUT);
+});
+
 test('parseArgs accepts debug timing and phase stats flags', () => {
     const args = parseArgs([
         'node',
@@ -217,6 +242,19 @@ test('parseArgs accepts debug timing and phase stats flags', () => {
 
     assert.equal(args.debugTimings, true);
     assert.equal(args.debugPhaseStats, true);
+});
+
+test('parseArgs enables verbose diagnostics when debug mode is requested', () => {
+    const args = parseArgs([
+        'node',
+        'telegram_proxy_pinger.js',
+        '--file',
+        'proxies.txt',
+        '--debug'
+    ]);
+
+    assert.equal(args.debug, true);
+    assert.equal(args.verbose, true);
 });
 
 test('buildCanonicalProxyUrl always serializes a clean tg proxy link', () => {
@@ -314,6 +352,121 @@ test('main surfaces worker initialization cause when all workers fail', async ()
                 return true;
             }
         );
+    } finally {
+        Worker.prototype.init = originalInit;
+        process.chdir(previousCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+test('main initializes workers with bounded concurrency', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'main-worker-init-concurrent-test-'));
+    const previousCwd = process.cwd();
+    const originalInit = Worker.prototype.init;
+    const originalPrepareProxyCheck = Worker.prototype.prepareProxyCheck;
+    const originalClose = Worker.prototype.close;
+    const originalLog = console.log;
+    let activeInits = 0;
+    let maxActiveInits = 0;
+
+    try {
+        process.chdir(tempDir);
+        projectPaths.ensureDataDirectories();
+        fs.writeFileSync(
+            'proxies.txt',
+            'tg://proxy?server=valid.example&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc\n',
+            'utf8'
+        );
+        Worker.prototype.init = async function initStub() {
+            void this;
+            activeInits += 1;
+            maxActiveInits = Math.max(maxActiveInits, activeInits);
+            await sleep(20);
+            activeInits -= 1;
+        };
+        Worker.prototype.prepareProxyCheck = async function prepareProxyCheckStub(proxy) {
+            return {
+                candidate: proxy,
+                dcSweep: [
+                    { dcId: 2, ok: false, error: 'TEST_FAIL' },
+                    { dcId: 4, ok: false, error: 'TEST_FAIL' },
+                    { dcId: 5, ok: false, error: 'TEST_FAIL' }
+                ],
+                warmCheck: null,
+                shouldRunStrictRetest: false,
+                finalTimeoutSeconds: 6,
+                requiredColdSessions: 3,
+                maxColdSessions: 3,
+                warmCheckSkipped: true,
+                skipReason: 'test',
+                dcSuccessCount: 0,
+                phaseTimings: {
+                    dcSweepMs: 1,
+                    warmCheckMs: 0
+                },
+                workerId: this.id
+            };
+        };
+        Worker.prototype.close = async () => {};
+        console.log = () => {};
+
+        await checkerCore.main([
+            'node',
+            'telegram_proxy_pinger.js',
+            '--file',
+            'proxies.txt',
+            '--concurrency',
+            '16'
+        ]);
+
+        assert.ok(maxActiveInits > 1);
+        assert.ok(maxActiveInits <= 8);
+    } finally {
+        Worker.prototype.init = originalInit;
+        Worker.prototype.prepareProxyCheck = originalPrepareProxyCheck;
+        Worker.prototype.close = originalClose;
+        console.log = originalLog;
+        process.chdir(previousCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+test('main stops worker initialization after the first fully failed bounded wave', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'main-worker-init-fail-fast-test-'));
+    const previousCwd = process.cwd();
+    const originalInit = Worker.prototype.init;
+    let initCalls = 0;
+
+    try {
+        process.chdir(tempDir);
+        projectPaths.ensureDataDirectories();
+        fs.writeFileSync(
+            'proxies.txt',
+            'tg://proxy?server=valid.example&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc\n',
+            'utf8'
+        );
+        Worker.prototype.init = async () => {
+            initCalls += 1;
+            await sleep(20);
+            throw new Error('library load disallowed by system policy');
+        };
+
+        await assert.rejects(
+            checkerCore.main([
+                'node',
+                'telegram_proxy_pinger.js',
+                '--file',
+                'proxies.txt',
+                '--concurrency',
+                '16'
+            ]),
+            error => {
+                assert.equal(error.message, STATUS.CHECKER_INVALID);
+                assert.equal(error.userTitle, 'Worker initialization failed');
+                return true;
+            }
+        );
+        assert.equal(initCalls, 8);
     } finally {
         Worker.prototype.init = originalInit;
         process.chdir(previousCwd);
@@ -3209,6 +3362,27 @@ test('runProxyCheckPool completes strict-cold candidates and records phase stats
     assert.equal(results.meta.phaseStats.preparedCount, 2);
     assert.equal(results.meta.phaseStats.coldQueuedCount, 2);
     assert.equal(results.meta.phaseStats.timings.coldQueueWait.median, 5);
+});
+
+test('runProxyCheckPool rejects promptly when no workers are available', async () => {
+    await assert.rejects(
+        Promise.race([
+            runProxyCheckPool(
+                [{ server: 'x.example', port: 443, secretHex: 'dd1', proxyType: 'dd', inputIndex: 0 }],
+                [],
+                {
+                    attempts: 1,
+                    verbose: false,
+                    timeout: 4
+                },
+                { showProgress: false }
+            ),
+            sleep(100).then(() => {
+                throw new Error('runProxyCheckPool zero-worker timeout');
+            })
+        ]),
+        error => error.message === 'runProxyCheckPool requires at least one worker'
+    );
 });
 
 test('runProxyCheckPool stops emitting live progress once cancellation was requested', async () => {

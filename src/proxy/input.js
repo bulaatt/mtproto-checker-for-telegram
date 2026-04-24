@@ -1,4 +1,5 @@
 const fs = require('fs');
+const net = require('net');
 const {
     sanitizeAttempts,
     sanitizeBatchSize,
@@ -90,6 +91,98 @@ function toCanonicalServer(server) {
     return String(server || '').trim().toLowerCase();
 }
 
+function hasTerminalControlChars(value) {
+    return /[\u0000-\u001f\u007f-\u009f]/u.test(String(value || ''));
+}
+
+function parseIpv4Literal(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(text)) return null;
+
+    const parts = text.split('.').map(part => Number.parseInt(part, 10));
+    if (parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) {
+        return null;
+    }
+
+    return parts;
+}
+
+function isUnsafeIpv4Literal(parts) {
+    const [first, second, third, fourth] = parts;
+
+    return first === 0 ||
+        first === 10 ||
+        first === 127 ||
+        (first === 100 && second >= 64 && second <= 127) ||
+        (first === 169 && second === 254) ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 0 && third === 0) ||
+        (first === 192 && second === 0 && third === 2) ||
+        (first === 192 && second === 88 && third === 99) ||
+        (first === 192 && second === 168) ||
+        (first === 198 && (second === 18 || second === 19)) ||
+        (first === 198 && second === 51 && third === 100) ||
+        (first === 203 && second === 0 && third === 113) ||
+        first >= 224 ||
+        (first === 255 && second === 255 && third === 255 && fourth === 255);
+}
+
+function isUnsafeIpv6Literal(value) {
+    const text = String(value || '').trim().toLowerCase();
+    const mappedIpv4 = text.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+
+    if (mappedIpv4) {
+        const parts = parseIpv4Literal(mappedIpv4[1]);
+        return !parts || isUnsafeIpv4Literal(parts);
+    }
+
+    return text === '::' ||
+        text === '::1' ||
+        text.startsWith('fc') ||
+        text.startsWith('fd') ||
+        /^fe[89ab]:/u.test(text) ||
+        text.startsWith('ff') ||
+        text.startsWith('2001:db8:');
+}
+
+function isValidHostname(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text || text.length > 253) return false;
+    if (text.startsWith('.') || text.endsWith('.')) return false;
+    if (/^[\d.]+$/.test(text)) return false;
+
+    return text.split('.').every(label =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label)
+    );
+}
+
+function isAllowedProxyServer(server) {
+    const text = toCanonicalServer(server);
+    if (!text || hasTerminalControlChars(text)) return false;
+
+    const ipv4Parts = parseIpv4Literal(text);
+    if (ipv4Parts) {
+        return !isUnsafeIpv4Literal(ipv4Parts);
+    }
+
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(text)) {
+        return false;
+    }
+
+    const ipVersion = net.isIP(text);
+    if (ipVersion === 6) {
+        return !isUnsafeIpv6Literal(text);
+    }
+    if (ipVersion === 4) {
+        return false;
+    }
+
+    if (text.includes(':')) return false;
+    return isValidHostname(text);
+}
+
 function sanitizeInputLine(rawLine) {
     const line = String(rawLine || '').trim();
     if (!line) return '';
@@ -145,7 +238,7 @@ function parseProxyUrl(url) {
     const secret = parsedUrl.searchParams.get('secret');
     const bot = parsedUrl.searchParams.get('bot');
 
-    if (!server || Number.isNaN(port) || port < 1 || port > 65535) {
+    if (!isAllowedProxyServer(server) || Number.isNaN(port) || port < 1 || port > 65535) {
         return { ok: false, reason: STATUS.INVALID_INPUT };
     }
 
@@ -263,6 +356,7 @@ function parseArgs(argv = process.argv) {
         bootstrapTimeout: 12,
         attempts: 3,
         batchSize: 0,
+        verbose: false,
         debug: false,
         debugTimings: false,
         debugPhaseStats: false
@@ -277,7 +371,10 @@ function parseArgs(argv = process.argv) {
         else if ((arg === '--bootstrap-timeout' || arg === '--init-timeout') && argv[i + 1]) args.bootstrapTimeout = Number.parseFloat(argv[++i]) || args.bootstrapTimeout;
         else if ((arg === '--attempts' || arg === '-a') && argv[i + 1]) args.attempts = Math.max(1, Number.parseInt(argv[++i], 10) || args.attempts);
         else if ((arg === '--batch-size' || arg === '-b') && argv[i + 1]) args.batchSize = Math.max(0, Number.parseInt(argv[++i], 10) || 0);
-        else if (arg === '--debug' || arg === '-d') args.debug = true;
+        else if (arg === '--debug' || arg === '-d') {
+            args.debug = true;
+            args.verbose = true;
+        }
         else if (arg === '--debug-timings') args.debugTimings = true;
         else if (arg === '--debug-phase-stats') args.debugPhaseStats = true;
     }
