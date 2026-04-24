@@ -27,6 +27,14 @@ tgproxy
 
 Choose the interface language, refresh or select a proxy list, and start the check.
 
+## Update
+
+To update tgproxy to the latest version:
+
+```bash
+npm install -g tgproxy@latest
+```
+
 ## What It Does
 
 - Refreshes built-in MTProto proxy lists from GitHub sources
