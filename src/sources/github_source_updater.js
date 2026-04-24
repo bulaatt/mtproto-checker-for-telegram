@@ -26,6 +26,7 @@ const GITHUB_SOURCES_MERGED_FILENAME = projectPaths.ALL_SOURCES_FILENAME;
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 const DEFAULT_REQUEST_RETRY_COUNT = 1;
 const DEFAULT_REQUEST_RETRY_DELAY_MS = 1_000;
+const DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 
 const GITHUB_PROXY_SOURCES = [
@@ -165,6 +166,9 @@ function writeFileAtomically(targetPath, content) {
 function fetchTextFromUrl(url, options = {}) {
     const timeoutMs = Number(options.timeoutMs || DEFAULT_REQUEST_TIMEOUT_MS);
     const redirectCount = Number(options.redirectCount || 0);
+    const maxResponseBytes = Number.isFinite(options.maxResponseBytes)
+        ? options.maxResponseBytes
+        : DEFAULT_MAX_RESPONSE_BYTES;
     const cancelState = options.cancelState || null;
     throwIfCancelled(cancelState);
 
@@ -196,6 +200,7 @@ function fetchTextFromUrl(url, options = {}) {
                 const redirectedUrl = new URL(headers.location, url).toString();
                 fetchTextFromUrl(redirectedUrl, {
                     timeoutMs,
+                    maxResponseBytes,
                     redirectCount: redirectCount + 1,
                     cancelState
                 }).then(finish(resolve), finish(reject));
@@ -210,7 +215,16 @@ function fetchTextFromUrl(url, options = {}) {
 
             response.setEncoding('utf8');
             let body = '';
+            let receivedBytes = 0;
             response.on('data', chunk => {
+                if (settled) return;
+                receivedBytes += Buffer.byteLength(chunk, 'utf8');
+                if (receivedBytes > maxResponseBytes) {
+                    finish(reject)(new Error('Source response too large'));
+                    response.destroy();
+                    request.destroy();
+                    return;
+                }
                 body += chunk;
             });
             response.on('end', () => {
@@ -373,6 +387,7 @@ module.exports = {
     DEFAULT_REQUEST_RETRY_COUNT,
     DEFAULT_REQUEST_RETRY_DELAY_MS,
     DEFAULT_REQUEST_TIMEOUT_MS,
+    DEFAULT_MAX_RESPONSE_BYTES,
     GITHUB_SOURCE_SELECTIONS,
     GITHUB_PROXY_SOURCES,
     GITHUB_SOURCES_MERGED_FILENAME,
@@ -381,6 +396,7 @@ module.exports = {
     SOURCE_ID_SCRAPER,
     SOURCE_ID_SOLISPIRIT,
     fetchSourceWithRetry,
+    fetchTextFromUrl,
     getSourceSelectionName,
     getSourceNote,
     parseSourceEntries,

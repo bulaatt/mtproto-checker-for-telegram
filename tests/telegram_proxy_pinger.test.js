@@ -24,6 +24,10 @@ const checkerCore = require('../src/checker');
 const projectPaths = require('../src/config/project_paths');
 const { setActiveUiLanguage } = require('../src/i18n');
 const {
+    createCancelState,
+    requestCancel
+} = require('../src/shared/cancel');
+const {
     normalizeSecret,
     normalizeConcurrency,
     parseArgs,
@@ -3299,6 +3303,77 @@ test('runProxyCheckPool stops emitting live progress once cancellation was reque
         global.setInterval = originalSetInterval;
         global.clearInterval = originalClearInterval;
     }
+});
+
+test('runProxyCheckPool unwinds blocked prepared producers when cancellation is requested', async () => {
+    const cancelState = createCancelState();
+    const items = Array.from({ length: 6 }, (_, index) => ({
+        server: `queued-${index}.example`,
+        port: 443,
+        secretHex: `dd${index}`,
+        proxyType: 'dd',
+        inputIndex: index
+    }));
+    const workers = Array.from({ length: 3 }, (_, index) => ({
+        id: `w${index + 1}`,
+        prepareProxyCheck: async proxy => ({
+            candidate: proxy,
+            dcSweep: [
+                { dcId: 2, ok: true },
+                { dcId: 4, ok: true },
+                { dcId: 5, ok: true }
+            ],
+            warmCheck: {
+                ok: true,
+                networkOk: true,
+                realTrafficOk: true,
+                apiProbePassed: true,
+                apiProbeChecks: [],
+                readyReached: true,
+                sawConnectingToProxy: true,
+                forcedReconnect: true
+            },
+            shouldRunStrictRetest: true,
+            finalTimeoutSeconds: 6,
+            requiredColdSessions: 3,
+            maxColdSessions: 3,
+            warmCheckSkipped: false,
+            skipReason: null,
+            dcSuccessCount: 3,
+            phaseTimings: {
+                dcSweepMs: 1,
+                warmCheckMs: 1,
+                coldQueueWaitMs: 0,
+                coldExecutionMs: 0
+            },
+            workerId: `w${index + 1}`
+        })
+    }));
+
+    const runPromise = runProxyCheckPool(items, workers, {
+        attempts: 1,
+        verbose: false,
+        timeout: 4
+    }, {
+        cancelState,
+        maxPreparedQueueSize: 1,
+        showProgress: false,
+        runColdRetestsFn: async () => {
+            requestCancel(cancelState);
+            await sleep(20);
+            throw new Error('cancelled cold retest should not decide the final result');
+        }
+    });
+
+    await assert.rejects(
+        Promise.race([
+            runPromise,
+            sleep(500).then(() => {
+                throw new Error('runProxyCheckPool cancellation timeout');
+            })
+        ]),
+        error => error.message === STATUS.CANCELLED
+    );
 });
 
 test('resolveColdSchedulerConcurrency scales with scan workers but stays within safe bounds', () => {

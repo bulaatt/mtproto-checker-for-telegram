@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 
@@ -14,7 +15,8 @@ const {
     SOURCE_ID_ALL,
     SOURCE_ID_ARGH94,
     SOURCE_ID_SCRAPER,
-    SOURCE_ID_SOLISPIRIT
+    SOURCE_ID_SOLISPIRIT,
+    fetchTextFromUrl
 } = require('../src/sources/github_source_updater');
 const { validateProxyListFile } = require('../src/cli/menu_file_helpers');
 
@@ -202,4 +204,27 @@ test('refreshGitHubSources stops immediately when cancellation was already reque
         assert.equal(fetchCalled, false);
         assert.equal(fs.existsSync(projectPaths.getAllSourcesPath()), false);
     });
+});
+
+test('fetchTextFromUrl rejects oversized source responses before buffering them fully', async () => {
+    const server = http.createServer((request, response) => {
+        void request;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.write('x'.repeat(64));
+        response.end('x'.repeat(64));
+    });
+
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+    try {
+        const { port } = server.address();
+        await assert.rejects(
+            fetchTextFromUrl(`http://127.0.0.1:${port}/source.txt`, {
+                maxResponseBytes: 100
+            }),
+            error => error.message === 'Source response too large'
+        );
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
 });

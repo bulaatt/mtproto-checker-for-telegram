@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const packageJson = require('../package.json');
@@ -132,6 +134,40 @@ test('root cli entrypoint is executable for npm global installs', () => {
     const entrypoint = fs.readFileSync(path.join(projectRoot, 'proxy_terminal_menu.js'), 'utf8');
 
     assert.match(entrypoint, /^#!\/usr\/bin\/env node/);
+});
+
+test('direct checker entrypoint runs checker cli instead of opening the menu', () => {
+    const projectRoot = path.resolve(__dirname, '..');
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'direct-checker-entrypoint-'));
+
+    try {
+        const result = spawnSync(
+            process.execPath,
+            [
+                path.join(projectRoot, 'telegram_proxy_pinger.js'),
+                '--file',
+                'missing.txt'
+            ],
+            {
+                cwd: projectRoot,
+                env: {
+                    ...process.env,
+                    TGPROXY_HOME: tempHome
+                },
+                input: '7\n',
+                encoding: 'utf8',
+                timeout: 3000
+            }
+        );
+
+        const output = `${result.stdout || ''}${result.stderr || ''}`;
+        assert.equal(result.error, undefined);
+        assert.equal(result.status, 1);
+        assert.match(output, /Cannot Start|Не удается запустить|input proxy list/i);
+        assert.doesNotMatch(output, /Simple MTProto proxy finder|Choose an option \[1-7\]|Run the proxy search now/);
+    } finally {
+        fs.rmSync(tempHome, { recursive: true, force: true });
+    }
 });
 
 test('repository ships bilingual GitHub-facing readmes and release notes for v1', () => {

@@ -3459,6 +3459,9 @@ async function runProxyCheckPool(items, workers, args, options = {}) {
             Math.max(workers.length, workers.length * DEFAULT_PREPARED_QUEUE_FACTOR)
         ))
     });
+    const closePreparedQueueOnCancel = addCancelListener(cancelState, () => {
+        preparedQueue.close();
+    });
     const phaseStats = createRunPhaseStats();
     let preparationSequence = 0;
     let completed = 0;
@@ -3590,13 +3593,20 @@ async function runProxyCheckPool(items, workers, args, options = {}) {
 
                 phaseStats.coldQueuedCount += 1;
                 preparationSequence += 1;
-                await preparedQueue.enqueue({
-                    proxy,
-                    resultIndex,
-                    prepared,
-                    priority: computePreparedProbePriority(prepared),
-                    sequence: preparationSequence
-                });
+                try {
+                    await preparedQueue.enqueue({
+                        proxy,
+                        resultIndex,
+                        prepared,
+                        priority: computePreparedProbePriority(prepared),
+                        sequence: preparationSequence
+                    });
+                } catch (error) {
+                    if (isCancellationActive(cancelState)) {
+                        break;
+                    }
+                    throw error;
+                }
             }
         })().finally(() => {
             activePreparers -= 1;
@@ -3656,6 +3666,7 @@ async function runProxyCheckPool(items, workers, args, options = {}) {
         if (progressTimer) {
             clearInterval(progressTimer);
         }
+        closePreparedQueueOnCancel();
         preparedQueue.close();
         await coldScheduler.close();
         if (isCancellationActive(cancelState)) {
