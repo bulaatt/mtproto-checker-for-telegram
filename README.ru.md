@@ -1,6 +1,7 @@
 <div align="center">
   <h1>MTProto Checker for Telegram</h1>
-  <p><a href="README.md">English</a> | Русский</p>
+  <p><strong>macOS</strong> · <strong>Windows</strong> · <strong>Linux</strong></p>
+  <p><a href="README.md">English</a> · Русский</p>
   <p>Обновляет списки MTProto-прокси из GitHub и помогает быстро понять, какие прокси для Telegram действительно работают.</p>
   <img src="docs/assets/readme/checker-splash-ru.png" alt="MTProto Checker for Telegram Russian screenshot" width="80%">
 </div>
@@ -40,6 +41,7 @@ npm install -g tgproxy@latest
 - Загружает свежие списки MTProto-прокси из GitHub
 - Принимает `.txt`-файлы со ссылками `tg://proxy` и `https://t.me/proxy`
 - Работает через интерактивное меню в терминале
+- Работает на macOS, Windows и Linux
 - Сохраняет последний список рабочих прокси в обычный `.txt`-файл
 - Поддерживает русский и английский интерфейс
 

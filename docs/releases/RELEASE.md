@@ -1,6 +1,7 @@
 ## Install
 
-Requires Node.js 16.20.2+.
+1. Install Node.js 16.20.2+ from https://nodejs.org/.
+2. Install tgproxy:
 
 ```bash
 npm install -g tgproxy
@@ -8,8 +9,6 @@ tgproxy
 ```
 
 Package: https://www.npmjs.com/package/tgproxy
-
-Version: v1.0.0
 
 ## Notes
 

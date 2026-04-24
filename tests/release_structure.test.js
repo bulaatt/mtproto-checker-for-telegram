@@ -174,7 +174,7 @@ test('repository ships bilingual GitHub-facing readmes and release notes for v1'
     const projectRoot = path.resolve(__dirname, '..');
     const englishReadme = fs.readFileSync(path.join(projectRoot, 'README.md'), 'utf8');
     const russianReadme = fs.readFileSync(path.join(projectRoot, 'README.ru.md'), 'utf8');
-    const releaseNotes = fs.readFileSync(path.join(projectRoot, 'docs/releases/v1.0.0.md'), 'utf8');
+    const releaseNotes = fs.readFileSync(path.join(projectRoot, 'docs/releases/RELEASE.md'), 'utf8');
 
     assert.match(englishReadme, /<div align="center">/);
     assert.match(englishReadme, /<a href="README\.ru\.md">Русский<\/a>/);
@@ -202,11 +202,11 @@ test('repository ships bilingual GitHub-facing readmes and release notes for v1'
     assert.doesNotMatch(russianReadme, /git clone/);
     assert.doesNotMatch(russianReadme, /npm run check/);
 
-    assert.match(releaseNotes, /v1\.0\.0/);
     assert.match(releaseNotes, /Node\.js 16\.20\.2\+/);
     assert.match(releaseNotes, /macOS/);
     assert.match(releaseNotes, /Windows/);
     assert.match(releaseNotes, /Linux/);
+    assert.doesNotMatch(releaseNotes, /Version:/);
     assert.doesNotMatch(releaseNotes, /native binaries/i);
 });
 
