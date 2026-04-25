@@ -21,6 +21,9 @@ process.on('exit', () => {
 
 const checkerFacade = require('../telegram_proxy_pinger');
 const checkerCore = require('../src/checker');
+const {
+    saveCandidateDiagnostics
+} = require('../src/checker/output_persistence');
 const projectPaths = require('../src/config/project_paths');
 const { setActiveUiLanguage } = require('../src/i18n');
 const {
@@ -257,6 +260,19 @@ test('parseArgs enables verbose diagnostics when debug mode is requested', () =>
     assert.equal(args.verbose, true);
 });
 
+test('parseArgs accepts verbose diagnostics without enabling debug mode', () => {
+    const args = parseArgs([
+        'node',
+        'telegram_proxy_pinger.js',
+        '--file',
+        'proxies.txt',
+        '--verbose'
+    ]);
+
+    assert.equal(args.verbose, true);
+    assert.equal(args.debug, false);
+});
+
 test('buildCanonicalProxyUrl always serializes a clean tg proxy link', () => {
     assert.equal(
         buildCanonicalProxyUrl({
@@ -266,6 +282,62 @@ test('buildCanonicalProxyUrl always serializes a clean tg proxy link', () => {
         }),
         'tg://proxy?server=champagne.limoozin.info&port=25565&secret=ee344818749bd7ac519130220c25d090'
     );
+});
+
+test('saveCandidateDiagnostics writes debug candidates without changing working output format', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-diagnostics-test-'));
+    const previousCwd = process.cwd();
+
+    try {
+        process.chdir(tempDir);
+        projectPaths.ensureDataDirectories();
+
+        const working = [{
+            server: 'alpha.example.com',
+            port: 443,
+            proxyType: 'classic',
+            canonicalUrl: 'tg://proxy?server=alpha.example.com&port=443&secret=dd8fb807a1ac8c4e95b8a2642e5bedd8fc'
+        }];
+        const candidates = [{
+            ...working[0],
+            status: STATUS.WORKING,
+            promoteReason: 'strict_cold_confirmed',
+            candidatePatternClass: 'cold_confirmed_working',
+            failurePhase: null,
+            currentRouteReadyRatio: 1,
+            currentRouteApiRatio: 1,
+            passedColdSessions: 4,
+            requiredColdSessions: 4,
+            apiConfirmedButUnpassedSessions: 0,
+            latencySampleCount: 4,
+            medianLatency: 180,
+            trimmedMaxLatency: 185,
+            rawMaxLatency: 190,
+            capReason: null,
+            ddPartialColdRouteBlockReason: null
+        }];
+
+        const before = fs.existsSync(projectPaths.getWorkingResultsPath())
+            ? fs.readFileSync(projectPaths.getWorkingResultsPath(), 'utf8')
+            : null;
+        const saved = saveCandidateDiagnostics(candidates, { runMode: 'debug' });
+        const after = fs.existsSync(projectPaths.getWorkingResultsPath())
+            ? fs.readFileSync(projectPaths.getWorkingResultsPath(), 'utf8')
+            : null;
+        const raw = fs.readFileSync(saved.outputPath, 'utf8');
+        const parsed = JSON.parse(raw);
+
+        assert.equal(before, after);
+        assert.equal(path.basename(saved.outputPath), 'checker_candidates.json');
+        assert.equal(parsed.runMode, 'debug');
+        assert.equal(parsed.candidates.length, 1);
+        assert.equal(parsed.candidates[0].status, STATUS.WORKING);
+        assert.equal(parsed.candidates[0].promoteReason, 'strict_cold_confirmed');
+        assert.equal(parsed.candidates[0].latency.median, 180);
+    } finally {
+        process.chdir(previousCwd);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 });
 
 test('validateInputFileOrThrow returns validation details for a valid file', () => {
@@ -1539,6 +1611,50 @@ test('classifyProxyCheck allows a single soft dc failure after full cold confirm
     assert.equal(outcome.status, STATUS.WORKING);
 });
 
+test('classifyProxyCheck labels single soft dc noise with confirmed cold traffic', () => {
+    const outcome = classifyProxyCheck({
+        candidate: { server: 'single-dc-noise.example.com', proxyType: 'classic' },
+        dcSweep: [
+            { dcId: 2, ok: true },
+            { dcId: 4, ok: false, error: 'TIMEOUT' },
+            { dcId: 5, ok: true }
+        ],
+        warmCheck: {
+            ok: true,
+            readyReached: true,
+            sawConnectingToProxy: false,
+            forcedReconnect: true
+        },
+        coldRetest: {
+            ok: true,
+            networkOk: true,
+            realTrafficOk: true,
+            apiProbePassed: true,
+            readyReached: true,
+            sawConnectingToProxy: false,
+            forcedReconnect: true,
+            coldRetestPassed: true,
+            dnsStabilityPassed: true,
+            dnsStrongEligible: true,
+            dnsSingleAddressOnly: true,
+            requiredColdSessions: 4,
+            passedColdSessions: 4,
+            confirmedTrafficSessions: 4,
+            confirmedTrafficAttempts: 8,
+            successAttempts: 8,
+            failAttempts: 0,
+            aggregateLatencyStable: true,
+            allLatencies: [150, 155, 160, 158],
+            allErrors: [],
+            failurePhase: null
+        },
+        attempts: 2
+    });
+
+    assert.equal(outcome.status, STATUS.WORKING);
+    assert.equal(outcome.promoteReason, 'soft_single_dc_noise_confirmed');
+});
+
 test('classifyProxyCheck allows warm-timeout rescue when strict cold retest fully passes', () => {
     const outcome = classifyProxyCheck({
         dcSweep: [
@@ -2626,6 +2742,152 @@ test('classifyProxyCheck blocks pure ping-proxy partial-cold promote for dd prox
 
     assert.equal(outcome.status, STATUS.MAY_WORK);
     assert.notEqual(outcome.promoteReason, 'pure_ping_proxy_partial_cold');
+});
+
+test('classifyProxyCheck promotes partial api-confirmed low-latency hostname candidates', () => {
+    const outcome = classifyProxyCheck({
+        candidate: { server: 'api-confirmed.example.com', proxyType: 'ee' },
+        dcSweep: [
+            { dcId: 2, ok: true },
+            { dcId: 4, ok: true },
+            { dcId: 5, ok: true }
+        ],
+        warmCheck: {
+            ok: true,
+            readyReached: true,
+            sawConnectingToProxy: false,
+            forcedReconnect: true
+        },
+        coldRetest: {
+            ok: false,
+            networkOk: true,
+            realTrafficOk: true,
+            apiProbePassed: true,
+            readyReached: true,
+            sawConnectingToProxy: false,
+            forcedReconnect: true,
+            coldRetestPassed: false,
+            dnsStabilityPassed: true,
+            dnsStrongEligible: true,
+            dnsSingleAddressOnly: true,
+            requiredColdSessions: 4,
+            passedColdSessions: 0,
+            confirmedTrafficSessions: 2,
+            confirmedTrafficAttempts: 2,
+            successAttempts: 2,
+            failAttempts: 2,
+            aggregateLatencyStable: false,
+            trimmedAggregateLatencyStable: true,
+            currentRouteReadyRatio: 0.8,
+            currentRouteApiRatio: 0.8,
+            allLatencies: [171, 188],
+            allErrors: ['TIMEOUT', 'TIMEOUT'],
+            failurePhase: 'ping_proxy',
+            debug: {
+                sessions: [
+                    {
+                        failurePhase: 'ping_proxy',
+                        allErrors: ['TIMEOUT'],
+                        networkOk: true,
+                        readyReached: true,
+                        forcedReconnect: true,
+                        realTrafficOk: true,
+                        apiProbePassed: true,
+                        coldRetestPassed: false
+                    },
+                    {
+                        failurePhase: 'ping_proxy',
+                        allErrors: ['TIMEOUT'],
+                        networkOk: true,
+                        readyReached: true,
+                        forcedReconnect: true,
+                        realTrafficOk: true,
+                        apiProbePassed: true,
+                        coldRetestPassed: false
+                    }
+                ]
+            }
+        },
+        attempts: 1
+    });
+
+    assert.equal(outcome.status, STATUS.WORKING);
+    assert.equal(outcome.promoteReason, 'partial_api_confirmed_low_latency_hostname');
+    assert.equal(outcome.candidatePatternClass, 'ping_proxy_only_good_route');
+    assert.equal(outcome.apiConfirmedButUnpassedSessions, 2);
+    assert.equal(outcome.latencySampleCount, 2);
+});
+
+test('classifyProxyCheck keeps partial api-confirmed hostnames in MAY_WORK when ready timeouts dominate', () => {
+    const outcome = classifyProxyCheck({
+        candidate: { server: 'ready-timeout.example.com', proxyType: 'classic' },
+        dcSweep: [
+            { dcId: 2, ok: true },
+            { dcId: 4, ok: true },
+            { dcId: 5, ok: true }
+        ],
+        warmCheck: {
+            ok: false,
+            error: 'READY_TIMEOUT',
+            failurePhase: 'wait_ready',
+            readyReached: false,
+            sawConnectingToProxy: false,
+            forcedReconnect: true
+        },
+        coldRetest: {
+            ok: false,
+            networkOk: true,
+            realTrafficOk: true,
+            apiProbePassed: true,
+            readyReached: true,
+            sawConnectingToProxy: false,
+            forcedReconnect: true,
+            coldRetestPassed: false,
+            dnsStabilityPassed: true,
+            dnsStrongEligible: true,
+            dnsSingleAddressOnly: true,
+            requiredColdSessions: 4,
+            passedColdSessions: 0,
+            confirmedTrafficSessions: 2,
+            confirmedTrafficAttempts: 2,
+            successAttempts: 2,
+            failAttempts: 2,
+            currentRouteReadyRatio: 1,
+            currentRouteApiRatio: 1,
+            allLatencies: [170, 174],
+            allErrors: ['READY_TIMEOUT', 'TIMEOUT'],
+            failurePhase: 'wait_ready',
+            debug: {
+                sessions: [
+                    {
+                        failurePhase: 'wait_ready',
+                        allErrors: ['READY_TIMEOUT'],
+                        networkOk: true,
+                        readyReached: true,
+                        forcedReconnect: true,
+                        realTrafficOk: true,
+                        apiProbePassed: true,
+                        coldRetestPassed: false
+                    },
+                    {
+                        failurePhase: 'wait_ready',
+                        allErrors: ['READY_TIMEOUT'],
+                        networkOk: true,
+                        readyReached: true,
+                        forcedReconnect: true,
+                        realTrafficOk: true,
+                        apiProbePassed: true,
+                        coldRetestPassed: false
+                    }
+                ]
+            }
+        },
+        attempts: 1
+    });
+
+    assert.equal(outcome.status, STATUS.MAY_WORK);
+    assert.equal(outcome.candidatePatternClass, 'wait_ready_dominant');
+    assert.notEqual(outcome.promoteReason, 'partial_api_confirmed_low_latency_hostname');
 });
 
 test('classifyProxyCheck keeps soft dc hostname candidates in MAY_WORK without cold traffic confirmation', () => {

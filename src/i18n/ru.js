@@ -324,6 +324,7 @@ module.exports = {
         andMore: ({ count }) => `... и ещё ${count}`,
         falseNegativeAuditHeading: 'Аудит ложных отрицаний:',
         savedProxyResultsTo: ({ value }) => `Результаты прокси сохранены в: ${value}`,
+        savedCandidateDiagnosticsTo: ({ value }) => `Диагностика кандидатов сохранена в: ${value}`,
         runMetrics: ({ warmCheckSkipped, hardFailAfterDcSweep, timeToFirstWorking, timeToFirstMayWork, renderCount }) => `Метрики запуска: warmCheckSkipped=${warmCheckSkipped}, hardFailAfterDcSweep=${hardFailAfterDcSweep}, timeToFirstWorking=${timeToFirstWorking}, timeToFirstMayWork=${timeToFirstMayWork}, renderCount=${renderCount}`
     },
     output: {

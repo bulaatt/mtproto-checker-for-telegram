@@ -50,6 +50,7 @@ const {
     validateProxyListFile
 } = require('../cli/menu_file_helpers');
 const {
+    saveCandidateDiagnostics,
     saveResults
 } = require('./output_persistence');
 const {
@@ -1049,6 +1050,45 @@ function hasPurePingProxyPartialColdWorkingSignal(
     );
 }
 
+function hasPartialApiConfirmedLowLatencyHostnameSignal(
+    coldRetest,
+    candidate,
+    warmCheck = null,
+    diagnostics = null,
+    latencyDiagnostics = null
+) {
+    if (!coldRetest || !candidate || isIpAddress(candidate.server)) return false;
+    if (!['classic', 'ee'].includes(String(candidate.proxyType || '').toLowerCase())) return false;
+    if (!warmCheck || warmCheck.ok !== true || warmCheck.readyReached !== true) return false;
+    if (coldRetest.dnsStabilityPassed === false || coldRetest.dnsStrongEligible === false) return false;
+    if (coldRetest.dnsSingleAddressOnly === false) return false;
+
+    const patternDiagnostics = diagnostics || collectFailureTypeDiagnostics(coldRetest, warmCheck);
+    if (patternDiagnostics.candidatePatternClass !== 'ping_proxy_only_good_route') return false;
+    if (patternDiagnostics.readyTimeoutSessions !== 0) return false;
+    if (patternDiagnostics.dcSweepFailedSessions !== 0) return false;
+    if (patternDiagnostics.warmReadyTimeout !== false) return false;
+    if ((coldRetest.failurePhase || null) !== 'ping_proxy') return false;
+    if ((coldRetest.currentRouteReadyRatio || 0) < 0.8) return false;
+    if ((coldRetest.currentRouteApiRatio || 0) < 0.8) return false;
+    if ((patternDiagnostics.apiConfirmedButUnpassedSessions || 0) < 2) return false;
+
+    const errors = Array.isArray(coldRetest.allErrors) ? coldRetest.allErrors : [];
+    if (errors.some(error => !/TIMEOUT/.test(String(error)))) return false;
+
+    const latency = latencyDiagnostics || getLatencyDiagnostics(coldRetest);
+    return Boolean(
+        latency.hasValidLatencySample === true &&
+        latency.latencySampleCount >= 2 &&
+        latency.medianLatency != null &&
+        latency.medianLatency <= 220 &&
+        latency.trimmedMaxLatency != null &&
+        latency.trimmedMaxLatency <= 240 &&
+        latency.rawMaxLatency != null &&
+        latency.rawMaxLatency <= 320
+    );
+}
+
 function getDdPartialColdRouteSignal(
     coldRetest,
     candidate,
@@ -1183,6 +1223,31 @@ function hasStableCurrentRouteWorkingSignal(coldRetest, candidate, attempts, war
         medianLatency <= 320 &&
         trimmedMaxLatency != null &&
         trimmedMaxLatency <= 450
+    );
+}
+
+function hasSoftSingleDcNoiseConfirmedSignal(coldRetest, candidate, warmCheck = null, dcSweep = [], latencyDiagnostics = null) {
+    if (!coldRetest || !candidate) return false;
+    if (!isSoftDcFailure(dcSweep)) return false;
+    if (!warmCheck || warmCheck.ok !== true || warmCheck.readyReached !== true) return false;
+    if (!coldRetest.coldRetestPassed) return false;
+    if (!coldRetest.realTrafficOk || coldRetest.apiProbePassed === false) return false;
+    if (coldRetest.dnsStabilityPassed === false || coldRetest.dnsStrongEligible === false) return false;
+    if (!isIpAddress(candidate.server) && coldRetest.dnsSingleAddressOnly === false) return false;
+
+    const errors = Array.isArray(coldRetest.allErrors) ? coldRetest.allErrors : [];
+    if (errors.some(error => !/TIMEOUT/.test(String(error)))) return false;
+
+    const latency = latencyDiagnostics || getLatencyDiagnostics(coldRetest);
+    return Boolean(
+        latency.hasValidLatencySample === true &&
+        latency.latencySampleCount >= 2 &&
+        latency.medianLatency != null &&
+        latency.medianLatency <= 320 &&
+        latency.trimmedMaxLatency != null &&
+        latency.trimmedMaxLatency <= 450 &&
+        latency.rawMaxLatency != null &&
+        latency.rawMaxLatency <= 650
     );
 }
 
@@ -1615,6 +1680,20 @@ function classifyProxyCheck({ candidate, dcSweep, warmCheck, coldRetest, attempt
             coldRetest &&
             !volatilityCapped &&
             hasStableCurrentRouteWorkingSignal(coldRetest, candidate, attempts, warmCheck, dcSweep);
+        const softSingleDcNoiseConfirmed =
+            coldRetest &&
+            hasSoftSingleDcNoiseConfirmedSignal(coldRetest, candidate, warmCheck, dcSweep, latencyDiagnostics);
+
+        if (softSingleDcNoiseConfirmed) {
+            return {
+                isAlive: true,
+                status: STATUS.WORKING,
+                confidence: 0.95,
+                failurePhase: null,
+                promoteReason: 'soft_single_dc_noise_confirmed',
+                ...outcomeBase
+            };
+        }
 
         if (partialCanTrust) {
             return {
@@ -1769,6 +1848,16 @@ function classifyProxyCheck({ candidate, dcSweep, warmCheck, coldRetest, attempt
             failureTypeDiagnostics,
             latencyDiagnostics
         );
+    const partialApiConfirmedLowLatencyHostname =
+        volatilityCapped &&
+        capReason === 'too_many_failures' &&
+        hasPartialApiConfirmedLowLatencyHostnameSignal(
+            coldRetest,
+            candidate,
+            warmCheck,
+            failureTypeDiagnostics,
+            latencyDiagnostics
+        );
     const ddPartialColdRouteWorking =
         hasDdPartialColdRouteWorkingSignal(
             coldRetest,
@@ -1844,6 +1933,18 @@ function classifyProxyCheck({ candidate, dcSweep, warmCheck, coldRetest, attempt
             confidence: 0.8,
             failurePhase: null,
             promoteReason: 'ping_proxy_route_confirmed',
+            ...outcomeBase,
+            routeFlapRecoverable: true
+        };
+    }
+
+    if (partialApiConfirmedLowLatencyHostname) {
+        return {
+            isAlive: true,
+            status: STATUS.WORKING,
+            confidence: 0.78,
+            failurePhase: null,
+            promoteReason: 'partial_api_confirmed_low_latency_hostname',
             ...outcomeBase,
             routeFlapRecoverable: true
         };
@@ -4072,6 +4173,12 @@ async function main(argv = process.argv) {
             uiLanguage: loadStoredUiLanguage()
         });
         console.log(`\n${t('checker.savedProxyResultsTo', { value: saved.outputPath })}`);
+        if (args.verbose) {
+            const diagnostics = saveCandidateDiagnostics(results, {
+                runMode: args.debug ? 'debug' : 'verbose'
+            });
+            console.log(`${colors.dim}${t('checker.savedCandidateDiagnosticsTo', { value: diagnostics.outputPath })}${colors.reset}`);
+        }
         console.log(`${colors.dim}${t('common.totalTime', { value: totalSeconds.toFixed(1) })}${colors.reset}`);
         if (args.verbose && results.length > 0) {
             console.log(`${colors.dim}${t('common.averagePerProxy', { value: (totalSeconds / results.length).toFixed(2) })}${colors.reset}`);

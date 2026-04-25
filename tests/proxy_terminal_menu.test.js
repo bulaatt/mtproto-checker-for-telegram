@@ -146,6 +146,22 @@ test('buildArgv clamps unsafe values before launching checker', () => {
     ]);
 });
 
+test('buildArgv passes debug diagnostics only when verbose config is enabled', () => {
+    const quietArgv = buildArgv({
+        ...DEFAULT_CONFIG,
+        inputFile: 'proxies.txt',
+        verbose: false
+    });
+    const verboseArgv = buildArgv({
+        ...DEFAULT_CONFIG,
+        inputFile: 'proxies.txt',
+        verbose: true
+    });
+
+    assert.equal(quietArgv.includes('--debug'), false);
+    assert.equal(verboseArgv.includes('--debug'), true);
+});
+
 test('loadConfig and saveConfig keep only current runtime menu settings', () => withTempProject(() => {
     saveConfig({
         ...DEFAULT_CONFIG,

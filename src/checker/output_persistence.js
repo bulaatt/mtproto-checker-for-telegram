@@ -5,6 +5,7 @@ const projectPaths = require('../config/project_paths');
 
 const RESULT_SECTION_WORKING = 'working';
 const RESULT_SECTION_MAY_WORK = 'may_work';
+const CHECKER_CANDIDATES_FILENAME = 'checker_candidates.json';
 const WORKING_HEADER_TOKENS = [
     'Working MTProto proxies',
     'Рабочие MTProto-прокси'
@@ -125,10 +126,83 @@ function saveResults(working, mayWork = [], meta = {}) {
     return { outputPath };
 }
 
+function finiteOrNull(value) {
+    return Number.isFinite(value) ? value : null;
+}
+
+function normalizeCandidateDiagnostic(proxy) {
+    const server = String(proxy && proxy.server || '');
+    const port = proxy && proxy.port != null ? Number(proxy.port) : null;
+
+    return {
+        endpoint: port ? `${server}:${port}` : server,
+        canonicalUrl: proxy && (proxy.canonicalUrl || proxy.originalUrl) || null,
+        server,
+        port,
+        proxyType: proxy && proxy.proxyType || null,
+        status: proxy && proxy.status || null,
+        promoteReason: proxy && proxy.promoteReason || null,
+        candidatePatternClass: proxy && proxy.candidatePatternClass || 'mixed_failures',
+        failurePhase: proxy && proxy.failurePhase || null,
+        route: {
+            currentReadyRatio: finiteOrNull(proxy && proxy.currentRouteReadyRatio),
+            currentApiRatio: finiteOrNull(proxy && proxy.currentRouteApiRatio)
+        },
+        cold: {
+            passedSessions: Number(proxy && proxy.passedColdSessions || 0),
+            requiredSessions: Number(proxy && proxy.requiredColdSessions || 0),
+            apiConfirmedButUnpassedSessions: Number(proxy && proxy.apiConfirmedButUnpassedSessions || 0),
+            warmReadyTimeout: Boolean(proxy && proxy.warmReadyTimeout),
+            readyTimeoutSessions: Number(proxy && proxy.readyTimeoutSessions || 0),
+            pingTimeoutOnlySessions: Number(proxy && proxy.pingTimeoutOnlySessions || 0),
+            dcSweepFailedSessions: Number(proxy && proxy.dcSweepFailedSessions || 0)
+        },
+        latency: {
+            hasValidSample: Boolean(proxy && proxy.hasValidLatencySample),
+            sampleCount: Number(proxy && proxy.latencySampleCount || 0),
+            median: finiteOrNull(proxy && proxy.medianLatency),
+            trimmedMax: finiteOrNull(proxy && proxy.trimmedMaxLatency),
+            rawMax: finiteOrNull(proxy && proxy.rawMaxLatency),
+            ping: finiteOrNull(proxy && proxy.pingLatencyMs)
+        },
+        blocks: {
+            capReason: proxy && proxy.capReason || null,
+            ddPartialColdRouteBlockReason: proxy && proxy.ddPartialColdRouteBlockReason || null,
+            volatilityCapped: Boolean(proxy && proxy.volatilityCapped),
+            routeFlapRecoverable: Boolean(proxy && proxy.routeFlapRecoverable),
+            ddPartialColdRouteRecoverable: Boolean(proxy && proxy.ddPartialColdRouteRecoverable)
+        },
+        diagnostics: {
+            dnsStabilityPassed: Boolean(proxy && proxy.dnsStabilityPassed),
+            dnsStrongEligible: Boolean(proxy && proxy.dnsStrongEligible),
+            dnsSingleAddressOnly: Boolean(proxy && proxy.dnsSingleAddressOnly),
+            timeoutOnlyErrors: Boolean(proxy && proxy.timeoutOnlyErrors),
+            allErrors: Array.isArray(proxy && proxy.allErrors) ? proxy.allErrors : []
+        }
+    };
+}
+
+function saveCandidateDiagnostics(candidates = [], meta = {}) {
+    projectPaths.ensureDataDirectories();
+
+    const outputPath = projectPaths.getRuntimeFilePath(CHECKER_CANDIDATES_FILENAME);
+    const payload = {
+        generatedAt: new Date().toISOString(),
+        runMode: meta.runMode || 'debug',
+        total: candidates.length,
+        candidates: candidates.map(normalizeCandidateDiagnostic)
+    };
+
+    fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+
+    return { outputPath };
+}
+
 module.exports = {
     formatSavedTotalTime,
     parseSavedResultsText,
     RESULT_SECTION_MAY_WORK,
     RESULT_SECTION_WORKING,
+    saveCandidateDiagnostics,
     saveResults
 };

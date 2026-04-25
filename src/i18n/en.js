@@ -324,6 +324,7 @@ module.exports = {
         andMore: ({ count }) => `... and ${count} more`,
         falseNegativeAuditHeading: 'False-negative audit:',
         savedProxyResultsTo: ({ value }) => `Saved proxy results to: ${value}`,
+        savedCandidateDiagnosticsTo: ({ value }) => `Saved candidate diagnostics to: ${value}`,
         runMetrics: ({ warmCheckSkipped, hardFailAfterDcSweep, timeToFirstWorking, timeToFirstMayWork, renderCount }) => `Run metrics: warmCheckSkipped=${warmCheckSkipped}, hardFailAfterDcSweep=${hardFailAfterDcSweep}, timeToFirstWorking=${timeToFirstWorking}, timeToFirstMayWork=${timeToFirstMayWork}, renderCount=${renderCount}`
     },
     output: {

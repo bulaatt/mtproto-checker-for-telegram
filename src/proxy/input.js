@@ -375,6 +375,7 @@ function parseArgs(argv = process.argv) {
             args.debug = true;
             args.verbose = true;
         }
+        else if (arg === '--verbose') args.verbose = true;
         else if (arg === '--debug-timings') args.debugTimings = true;
         else if (arg === '--debug-phase-stats') args.debugPhaseStats = true;
     }

@@ -782,6 +782,10 @@ function buildArgv(config) {
         argv.push('--batch-size', String(safeConfig.batchSize));
     }
 
+    if (safeConfig.verbose) {
+        argv.push('--debug');
+    }
+
     return argv;
 }
 
